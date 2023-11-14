@@ -41,6 +41,7 @@ func client(address string) *reds.Client {
 
 func MyNewRedis(address string) *MyRedis {
 	return &MyRedis{
-		r: client(address),
+		ctx: context.Background(),
+		r:   client(address),
 	}
 }
