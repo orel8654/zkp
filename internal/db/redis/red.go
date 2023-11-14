@@ -12,23 +12,29 @@ type MyRedis struct {
 	r   *reds.Client
 }
 
-func (m *MyRedis) SaveVal(key string, val int64) error {
-	if err := m.r.Set(m.ctx, key, val, 0).Err(); err != nil {
-		return err
+func (m *MyRedis) SaveVal(key string, val ...int64) error {
+	for i, n := range val {
+		if err := m.r.Set(m.ctx, key+strconv.Itoa(i+1), n, 0).Err(); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
-func (m *MyRedis) GetVal(key string) (int64, error) {
-	val, err := m.r.Get(m.ctx, key).Result()
-	if err != nil {
-		return 0, err
+func (m *MyRedis) GetVal(key ...string) (map[string]int64, error) {
+	result := map[string]int64{}
+	for _, n := range key {
+		val, err := m.r.Get(m.ctx, n).Result()
+		if err != nil {
+			return result, err
+		}
+		convNum, err := strconv.ParseInt(val, 10, 64)
+		if err != nil {
+			return result, err
+		}
+		result[n] = convNum
 	}
-	i, err := strconv.ParseInt(val, 10, 64)
-	if err != nil {
-		return 0, err
-	}
-	return i, nil
+	return result, nil
 }
 
 func client(address string) *reds.Client {

@@ -2,12 +2,9 @@ package main
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 	"log"
 	"math/big"
-	r "math/rand"
 	"service/pkg/serv"
 
 	"google.golang.org/grpc"
@@ -15,17 +12,10 @@ import (
 )
 
 var (
-	// p          = big.NewInt(123)
-	// g          = big.NewInt(321)
-	privateKey = big.NewInt(456)
-	publicKey  = new(big.Int).Exp(g, privateKey, p)
-	x          = "MySecretPassword123"
-)
-
-var (
-	clientPrivateKey = big.NewInt(23) // Секретное значение клиента
-	p, _             = new(big.Int).SetString("115792089237316195423570985008687907853269984665640564039457584007913129639747", 10)
-	g, _             = new(big.Int).SetString("2", 10)
+	x = new(big.Int).SetInt64(3)
+	q = new(big.Int).SetInt64(11)
+	g = new(big.Int).SetInt64(5)
+	h = new(big.Int).SetInt64(7)
 )
 
 func main() {
@@ -46,8 +36,8 @@ func run(ctx context.Context, address string) error {
 	// Registration
 	regReq := &serv.RegisterRequest{
 		User: "Alice",
-		Y1:   publicKey.Int64(),
-		Y2:   new(big.Int).Exp(g, privateKey, p).Int64(),
+		Y1:   new(big.Int).Exp(g, x, nil).Int64(),
+		Y2:   new(big.Int).Exp(g, x, nil).Int64(),
 	}
 	regRes, err := client.Register(ctx, regReq)
 	_ = regRes
@@ -57,10 +47,13 @@ func run(ctx context.Context, address string) error {
 	log.Print("Registration successful")
 
 	// Authentication Challenge
-	alpha := r.Int63()
+	k := new(big.Int).SetInt64(2)
+	r1 := new(big.Int).Exp(g, k, nil)
+	r2 := new(big.Int).Exp(h, k, nil)
 	challengeReq := &serv.AuthenticationChallengeRequest{
 		User: "Alice",
-		R1:   alpha,
+		R1:   r1.Int64(),
+		R2:   r2.Int64(),
 	}
 	challengeRes, err := client.CreateAuthenticationChallenge(ctx, challengeReq)
 	if err != nil {
@@ -68,13 +61,9 @@ func run(ctx context.Context, address string) error {
 	}
 
 	// Authentication Answer
-	beta := challengeRes.C
-	alpha = challengeReq.R1
-	hashed := sha256.Sum256([]byte(x))
-	int64Value := int64(binary.BigEndian.Uint64(hashed[:8]))
-	s := new(big.Int).Sub(big.NewInt(alpha), new(big.Int).Mul(big.NewInt(int64Value), big.NewInt(beta)))
-	s.Div(s, big.NewInt(alpha))
-
+	c := new(big.Int).SetInt64(4)
+	s := new(big.Int).Sub(k, new(big.Int).Mul(c, x))
+	s.Mod(s, q)
 	authReq := &serv.AuthenticationAnswerRequest{
 		AuthId: challengeRes.AuthId,
 		S:      s.Int64(),
