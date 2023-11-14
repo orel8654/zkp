@@ -48,12 +48,10 @@ func run(ctx context.Context, address string) error {
 
 	// Authentication Challenge
 	k := new(big.Int).SetInt64(2)
-	r1 := new(big.Int).Exp(g, k, nil)
-	r2 := new(big.Int).Exp(h, k, nil)
 	challengeReq := &serv.AuthenticationChallengeRequest{
 		User: "Alice",
-		R1:   r1.Int64(),
-		R2:   r2.Int64(),
+		R1:   new(big.Int).Exp(g, x, nil).Int64(),
+		R2:   new(big.Int).Exp(g, x, nil).Int64(),
 	}
 	challengeRes, err := client.CreateAuthenticationChallenge(ctx, challengeReq)
 	if err != nil {
@@ -61,8 +59,8 @@ func run(ctx context.Context, address string) error {
 	}
 
 	// Authentication Answer
-	c := new(big.Int).SetInt64(4)
-	s := new(big.Int).Sub(k, new(big.Int).Mul(c, x))
+	c := challengeRes.C
+	s := new(big.Int).Sub(k, new(big.Int).Mul(big.NewInt(c), x))
 	s.Mod(s, q)
 	authReq := &serv.AuthenticationAnswerRequest{
 		AuthId: challengeRes.AuthId,

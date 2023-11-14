@@ -17,6 +17,7 @@ var (
 	g = new(big.Int).SetInt64(5)
 	h = new(big.Int).SetInt64(7)
 	q = new(big.Int).SetInt64(11)
+	c = new(big.Int).SetInt64(4)
 )
 
 type MyAuthServer struct {
@@ -35,7 +36,6 @@ func (m *MyAuthServer) Register(ctx context.Context, req *serv.RegisterRequest) 
 
 func (m *MyAuthServer) CreateAuthenticationChallenge(ctx context.Context, req *serv.AuthenticationChallengeRequest) (*serv.AuthenticationChallengeResponse, error) {
 	log.Print("CreateAuthenticationChallenge method")
-	c := new(big.Int).SetInt64(4)
 	if err := m.Rb.SaveVal(req.User+"r", req.R1, req.R2); err != nil {
 		log.Printf("redis save failed - %s", err) // debug
 		return nil, errors.New("can't created challenge")
@@ -53,17 +53,17 @@ func (m *MyAuthServer) CreateAuthenticationChallenge(ctx context.Context, req *s
 func (m *MyAuthServer) VerifyAuthentication(ctx context.Context, req *serv.AuthenticationAnswerRequest) (*serv.AuthenticationAnswerResponse, error) {
 	log.Print("VerifyAuthentication method")
 	authUser := req.AuthId
-	consts, err := m.Rb.GetVal(authUser+"r1", authUser+"r2", authUser+"y1", authUser+"y2", authUser+"c1")
+	consts, err := m.Rb.GetVal(authUser+"r1", authUser+"r2", authUser+"y1", authUser+"y2")
 	if err != nil {
 		return nil, errors.New("auth failed")
 	}
 
 	checkR1 := new(big.Int).Exp(g, big.NewInt(req.S), nil)
-	checkR1.Mul(checkR1, new(big.Int).Exp(big.NewInt(consts[authUser+"y1"]), big.NewInt(consts[authUser+"c1"]), nil))
+	checkR1.Mul(checkR1, new(big.Int).Exp(big.NewInt(consts[authUser+"y1"]), c, nil))
 	checkR1.Mod(checkR1, q)
 
 	checkR2 := new(big.Int).Exp(h, big.NewInt(req.S), nil)
-	checkR2.Mul(checkR2, new(big.Int).Exp(big.NewInt(consts[authUser+"y1"]), new(big.Int).SetInt64(3), nil))
+	checkR2.Mul(checkR2, new(big.Int).Exp(big.NewInt(consts[authUser+"y1"]), c, nil))
 	checkR2.Mod(checkR2, q)
 
 	if big.NewInt(consts[authUser+"r1"]).Cmp(checkR1) == 0 && big.NewInt(consts[authUser+"r2"]).Cmp(checkR2) == 0 {
