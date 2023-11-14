@@ -1,0 +1,5 @@
+generate_grpc_file:
+	protoc  \
+	--go_out=. \
+	--go-grpc_out=. \
+	./grpc/serv/serv.proto
