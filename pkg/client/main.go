@@ -2,10 +2,12 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 	"log"
 	"math/big"
-	"math/rand"
+	r "math/rand"
 	"service/pkg/serv"
 
 	"google.golang.org/grpc"
@@ -13,10 +15,17 @@ import (
 )
 
 var (
-	p          = big.NewInt(123)
-	g          = big.NewInt(321)
+	// p          = big.NewInt(123)
+	// g          = big.NewInt(321)
 	privateKey = big.NewInt(456)
 	publicKey  = new(big.Int).Exp(g, privateKey, p)
+	x          = "MySecretPassword123"
+)
+
+var (
+	clientPrivateKey = big.NewInt(23) // Секретное значение клиента
+	p, _             = new(big.Int).SetString("115792089237316195423570985008687907853269984665640564039457584007913129639747", 10)
+	g, _             = new(big.Int).SetString("2", 10)
 )
 
 func main() {
@@ -48,10 +57,10 @@ func run(ctx context.Context, address string) error {
 	log.Print("Registration successful")
 
 	// Authentication Challenge
-	r2 := rand.Int63()
+	alpha := r.Int63()
 	challengeReq := &serv.AuthenticationChallengeRequest{
 		User: "Alice",
-		R2:   r2,
+		R1:   alpha,
 	}
 	challengeRes, err := client.CreateAuthenticationChallenge(ctx, challengeReq)
 	if err != nil {
@@ -59,7 +68,13 @@ func run(ctx context.Context, address string) error {
 	}
 
 	// Authentication Answer
-	s := new(big.Int).Exp(g, privateKey, p)
+	beta := challengeRes.C
+	alpha = challengeReq.R1
+	hashed := sha256.Sum256([]byte(x))
+	int64Value := int64(binary.BigEndian.Uint64(hashed[:8]))
+	s := new(big.Int).Sub(big.NewInt(alpha), new(big.Int).Mul(big.NewInt(int64Value), big.NewInt(beta)))
+	s.Div(s, big.NewInt(alpha))
+
 	authReq := &serv.AuthenticationAnswerRequest{
 		AuthId: challengeRes.AuthId,
 		S:      s.Int64(),

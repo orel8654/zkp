@@ -1,6 +1,7 @@
 package logic
 
 import (
+	"crypto/rand"
 	"fmt"
 	"math/big"
 	"time"
@@ -9,14 +10,16 @@ import (
 var (
 	p          = big.NewInt(123)
 	g          = big.NewInt(321)
-	privateKey = big.NewInt(123)
+	privateKey = big.NewInt(456)
 	publicKey  = new(big.Int).Exp(g, privateKey, p)
 )
 
-func CreateChalleng(r1, r2 int64, user string) (int64, string) {
+func CreateChalleng(r1 int64, user string) (int64, string) {
 	authID := fmt.Sprintf("%s_%d", user, time.Now().UnixNano())
-	c := new(big.Int).Add(big.NewInt(r2), new(big.Int).Mul(big.NewInt(r1), privateKey))
-	c = c.Mod(c, p)
+	r2, _ := rand.Int(rand.Reader, p)
+	// c := new(big.Int).Add(r2, new(big.Int).Mul(big.NewInt(r1), privateKey))
+	c := new(big.Int).Add(r2, new(big.Int).Mul(big.NewInt(r1), privateKey))
+	// c = c.Mod(c, p)
 	return c.Int64(), authID
 }
 

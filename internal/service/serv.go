@@ -1,16 +1,24 @@
 package service
 
 import (
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"log"
-	"service/internal/logic"
+	"math/big"
 	"service/pkg/serv"
 	"time"
 
 	red "service/internal/db/redis"
 
 	"golang.org/x/net/context"
+)
+
+var (
+	serverSecret = big.NewInt(42) // Секретное значение сервера
+	p, _         = new(big.Int).SetString("115792089237316195423570985008687907853269984665640564039457584007913129639747", 10)
+	g, _         = new(big.Int).SetString("2", 10)
+	h            = new(big.Int).Exp(g, serverSecret, p)
 )
 
 type MyAuthServer struct {
@@ -28,29 +36,52 @@ func (m *MyAuthServer) Register(ctx context.Context, req *serv.RegisterRequest) 
 
 func (m *MyAuthServer) CreateAuthenticationChallenge(ctx context.Context, req *serv.AuthenticationChallengeRequest) (*serv.AuthenticationChallengeResponse, error) {
 	log.Print("CreateAuthenticationChallenge method")
-	c, authID := logic.CreateChalleng(req.R1, req.R2, req.User)
-	if err := m.Rb.SaveVal(authID, req.R2); err != nil {
+	r2, _ := rand.Int(rand.Reader, p)
+	alpha := req.R1
+	authID := fmt.Sprintf("%s_%d", req.User, time.Now().UnixNano())
+	beta := new(big.Int).Add(r2, new(big.Int).Mul(big.NewInt(alpha), serverSecret))
+	beta.Mod(beta, p)
+	if err := m.Rb.SaveVal(authID+"r2", r2.Int64()); err != nil {
+		log.Printf("redis save failed - %s", err) // debug
+		return nil, errors.New("can't created challenge")
+	}
+	if err := m.Rb.SaveVal(authID+"r1", alpha); err != nil {
 		log.Printf("redis save failed - %s", err) // debug
 		return nil, errors.New("can't created challenge")
 	}
 	return &serv.AuthenticationChallengeResponse{
 		AuthId: authID,
-		C:      c,
+		C:      beta.Int64(),
 	}, nil
 }
 
 func (m *MyAuthServer) VerifyAuthentication(ctx context.Context, req *serv.AuthenticationAnswerRequest) (*serv.AuthenticationAnswerResponse, error) {
 	log.Print("VerifyAuthentication method")
-	challengVal, err := m.Rb.GetVal(req.AuthId)
+	r2, err := m.Rb.GetVal(req.AuthId + "r2")
 	if err != nil {
 		log.Printf("redis get failed - %s", err) // debug
 		return nil, errors.New("data not found")
 	}
-	r := logic.CreateVerify(req.S, challengVal)
-	if r {
-		authID := fmt.Sprintf("session_%s_%d", req.AuthId, time.Now().UnixNano())
+	r1, err := m.Rb.GetVal(req.AuthId + "r1")
+	if err != nil {
+		log.Printf("redis get failed - %s", err) // debug
+		return nil, errors.New("data not found")
+	}
+	authID := req.AuthId
+	sValue := new(big.Int).Exp(g, big.NewInt(serverSecret.Int64()), p)
+	alpha := new(big.Int).Exp(g, big.NewInt(req.S), p)
+
+	s_r := new(big.Int).Sub(alpha, new(big.Int).Mul(sValue, big.NewInt(r2)))
+	s_r.Div(s_r, big.NewInt(r1))
+
+	expectedResult := new(big.Int).Exp(g, s_r, p)
+	expectedResult.Mul(expectedResult, new(big.Int).Exp(h, big.NewInt(r2), p))
+	expectedResult.Mod(expectedResult, p)
+
+	if expectedResult.Cmp(h) == 0 {
+		sessionID := fmt.Sprintf("session_%s_%d", authID, time.Now().UnixNano())
 		return &serv.AuthenticationAnswerResponse{
-			SessionId: authID,
+			SessionId: sessionID,
 		}, nil
 	}
 	return nil, errors.New("auth failed")
